@@ -168,7 +168,10 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <!-- Visual C++ 2010 should place any newly created properties in these groups -->
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>C:\Program Files %28x86%29\Microsoft Visual Studio 11.0\VC\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files %28x86%29\Microsoft Visual Studio 11.0\VC\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />
@@ -271,6 +274,10 @@
   <PropertyGroup>
     <Masm>ml</Masm>
     <Masm Condition="'$(Platform)'=='x64'">ml64</Masm>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug(mbcs)|Win32'">
+    <IncludePath>C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <CustomBuild>
