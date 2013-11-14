@@ -9091,6 +9091,7 @@ void *Script::GetVarType(LPTSTR aVarName)
 	if (!_tcscmp(lower, _T("ahkpath"))) return BIV_AhkPath;
 	if (!_tcscmp(lower, _T("priorkey"))) return BIV_PriorKey;
 	if (!_tcscmp(lower, _T("screendpi"))) return BIV_ScreenDPI;
+    if (!_tcscmp(lower, _T("listlines"))) return BIV_ListLines;
 
 	// Since above didn't return:
 	return (void *)VAR_NORMAL;
@@ -14592,8 +14593,34 @@ __forceinline ResultType Line::Perform() // As of 2/9/2009, __forceinline() redu
 		// Otherwise:
 		return ShowMainWindow(MAIN_MODE_KEYHISTORY, false); // Pass "unrestricted" when the command is explicitly used in the script.
 	case ACT_LISTLINES:
-		if (   (toggle = ConvertOnOff(ARG1, NEUTRAL)) == NEUTRAL   )
+        if (!*sArgDeref[0])                                 // Blank parameter - show the window
 			return ShowMainWindow(MAIN_MODE_LINES, false); // Pass "unrestricted" when the command is explicitly used in the script.
+
+        else if (RegExMatch(ARG1, _T("i)^(on|off)$")) != NULL)
+            toggle = ConvertOnOff(ARG1, NEUTRAL);
+
+        else if (IsPureNumeric(ARG1, false, false, false, false))
+            toggle = LegacyResultToBOOL(ARG1) ? TOGGLED_ON : TOGGLED_OFF;
+            //toggle = (atoi(ARG1) != 0 ? TOGGLED_ON : TOGGLED_OFF);
+
+        else if (!_strcmpi(ARG1, "CLEAR"))
+        {
+            //(!g_tcsstr(ARG1, _T("CLEAR"))) {
+            //!_strcmpi(ARG1, "CLEAR")) {
+            memset(sLog, 0, sizeof(sLog));
+            Line::sLogNext = 0;
+            return OK;
+        }
+
+        else if (*sArgDeref[0])
+        {
+            _stprintf(buf_temp, _T("FILE::%s"), ARG1);
+            LPTSTR result = Line::LogToText(buf_temp, _countof(buf_temp));
+            return result == NULL ? OK : SetErrorLevelOrThrowStr(result);
+        }
+        else
+            return SetErrorLevelOrThrowStr(_T("ListLines Invalid Parameter"));
+
 		// Otherwise:
 		if (g.ListLinesIsEnabled)
 		{
@@ -15173,6 +15200,22 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
 {
 	LPTSTR aBuf_orig = aBuf;
 
+    FILE *fp = NULL;
+    BOOL pendingFilename = true;
+    BOOL firstLine = true;
+    // TODO Unicode support
+    if (RegExMatch(aBuf, _T("FILE::")) != NULL)
+    { //~~~
+        LPTSTR listFile = &aBuf[6];
+        DeleteFile(listFile);
+        if (!(fp = _tfopen(listFile, _T("wb"))))
+        {
+            _stprintf(&aBuf[100], _T("Can't open ListLines File: %s"), listFile);
+            return &aBuf[100];
+        }
+    }
+
+
 	// Store the position of where each retry done by the outer loop will start writing:
 	LPTSTR aBuf_log_start = aBuf + sntprintf(aBuf, aBufSize, _T("Script lines most recently executed (oldest first).")
 		_T("  Press [F5] to refresh.  The seconds elapsed between a line and the one after it is in parentheses to")
@@ -15237,8 +15280,37 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
 			{
 				last_file_index = sLog[line_index]->mFileIndex;
 				aBuf += sntprintf(aBuf, BUF_SPACE_REMAINING, _T("---- %s\r\n"), sSourceFile[last_file_index]);
+                if (fp)
+                    pendingFilename = true;
 			}
 #endif
+            if (fp)
+            {
+                aBuf = aBuf_orig;
+                LPTSTR nullByte = sLog[line_index]->ToText(aBuf, aBufSize, true, elapsed, this_item_is_special);
+                CString escaped(aBuf);
+                escaped.TrimRight();
+                escaped.Replace(_T("\n"), _T("`n")).Replace(_T("\t"), _T("`t")).Replace(_T("\r"), _T("`r"));
+                LPTSTR colon    = _tcsrchr(aBuf, _T(':'));
+                TCHAR lastChar  = *(nullByte - 3);
+                int length      = nullByte - colon - 2;
+
+                if (_tcsrchr(_T("{}"), lastChar) && length <= 3)   // Ignore junk lines.  For example function declarations come out as {
+                    continue;
+
+                // Some file listings won't have any lines that survive the purge of jlines, so wait until we have a real line
+                // before printing the filename.  Also add a blank line befor all filenames for readability (except the first)
+                if (pendingFilename)
+                {
+                    pendingFilename = false;
+                    if (firstLine) firstLine = false;
+                    else _ftprintf(fp, _T("\r\n"));
+                    _ftprintf(fp, _T(";---- %s\r\n"), sSourceFile[last_file_index]);
+                }
+
+                _ftprintf(fp, _T("%s\r\n"), (LPCTSTR)escaped);
+                continue;
+            }
 			space_remaining = BUF_SPACE_REMAINING;  // Resolve macro only once for performance.
 			// Truncate really huge lines so that the Edit control's size is less likely to be exhausted.
 			// In v1.0.30.02, this is even more likely due to having increased the line-buf's capacity from
@@ -15261,6 +15333,12 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
 		line_index = sLogNext + (LINE_LOG_SIZE - lines_to_show); // Move the starting point forward in time so that the oldest log entries are omitted.
 
 	} // outer for() that retries the log-to-buffer routine.
+
+    if (fp)
+    {
+        fclose(fp);
+        return NULL;
+    }
 
 	// Must add the return value, not LINE_LOG_FINAL_MESSAGE_LENGTH, in case insufficient room (i.e. in case
 	// outer loop terminated due to lines_to_show being too small).
@@ -15337,7 +15415,7 @@ LPTSTR Line::ToText(LPTSTR aBuf, int aBufSize, bool aCRLF, DWORD aElapsed, bool 
 
 	LPTSTR aBuf_orig = aBuf;
 
-	aBuf += sntprintf(aBuf, aBufSize, _T("%03u: "), mLineNumber);
+    aBuf += sntprintf(aBuf, aBufSize, _T("%04u: "), mLineNumber);
 	if (aLineWasResumed)
 		aBuf += sntprintf(aBuf, BUF_SPACE_REMAINING, _T("STILL WAITING (%0.2f): "), (float)aElapsed / 1000.0);
 
@@ -15512,9 +15590,11 @@ Line *Line::PreparseError(LPTSTR aErrorText, LPTSTR aExtraInfo)
 IObject *Line::CreateRuntimeException(LPCTSTR aErrorText, LPCTSTR aWhat, LPCTSTR aExtraInfo)
 {
 	// Build the parameters for Object::Create()
-	ExprTokenType aParams[5*2]; int aParamCount = 4*2;
-	ExprTokenType* aParam[5*2] = { aParams + 0, aParams + 1, aParams + 2, aParams + 3, aParams + 4
-		, aParams + 5, aParams + 6, aParams + 7, aParams + 8, aParams + 9 };
+    ExprTokenType aParams[7*2]; int aParamCount = (7-2)*2; // 7 Max - 2 Optional
+    ExprTokenType* aParam[7*2] = { aParams + 0, aParams + 1, aParams + 2, aParams + 3, aParams + 4
+        , aParams + 5, aParams + 6, aParams + 7, aParams + 8, aParams + 9, aParams + 10, aParams + 11
+        , aParams + 12, aParams + 13};
+
 	aParams[0].symbol = SYM_STRING;  aParams[0].marker = _T("What");
 	aParams[1].symbol = SYM_STRING;  aParams[1].marker = aWhat ? (LPTSTR)aWhat : g_act[mActionType].Name;
 	aParams[2].symbol = SYM_STRING;  aParams[2].marker = _T("File");
@@ -15523,11 +15603,94 @@ IObject *Line::CreateRuntimeException(LPCTSTR aErrorText, LPCTSTR aWhat, LPCTSTR
 	aParams[5].symbol = SYM_INTEGER; aParams[5].value_int64 = mLineNumber;
 	aParams[6].symbol = SYM_STRING;  aParams[6].marker = _T("Message");
 	aParams[7].symbol = SYM_STRING;  aParams[7].marker = (LPTSTR)aErrorText;
+
+    // WH - Add a stack trace in Exception.Stack
+    CString stack, formatString, what;
+    DWORD maxFilename = 4, maxLineNum = 4, maxWhat = 7;
+    bool somethingToShow = false;
+
+    // 2 passes for alignment.  Generate once to calculate max widths, and a 2nd time to align
+    for (int i = 1; i <= 2; i++)
+    {
+        DbgStack::Entry *se = g_Debugger.mStack.mTop;
+        if (i == 2 && somethingToShow)
+        {
+            formatString.Format(_T("%%-%ds %%%ds: %%-%ds %%s"), maxFilename, maxLineNum, maxWhat);
+            stack.Format(formatString, _T("File"), _T("Line"), _T("Context"), _T("Code"));
+            stack.Append(_T("\n"));
+            formatString.Replace(_T("s:"), _T("d:"));
+        }
+
+        while (se >= g_Debugger.mStack.mBottom)
+        {
+            switch (se->type)
+            {
+            case DbgStack::SE_Func:
+                what = CString(se->func->mName) + _T("()");
+                somethingToShow = true;
+                break;
+            case DbgStack::SE_Sub:
+                what = CString(se->sub->mName) + _T(":");
+                somethingToShow = true;
+                break;
+            }
+
+            if (somethingToShow)
+            {
+                // First line in the stack is usually the last successful executing line, not the line that crashed so ++
+                // The rest (callers) are right
+                Line* exLine = (se != g_Debugger.mStack.mTop) ? se->line : se->line->mNextLine;
+                if (i == 1)
+                {
+                    TCHAR lineNum[20];
+                    maxFilename = max(maxFilename, _tcslen(Line::sSourceFile[exLine->mFileIndex]));
+                    maxLineNum  = max(maxLineNum , _tcslen(ITOA(exLine->mLineNumber, lineNum)));
+                    maxWhat     = max(maxWhat    , (DWORD)what.GetLength());
+                }
+                else
+                {
+                    TCHAR thisLine[200];
+                    exLine->ToText(thisLine, _countof(thisLine), false);
+                    CString lineCode(thisLine);
+                    lineCode.TrimRight('\n');
+                    int firstColon = lineCode.Find(_T(": "));
+                    if (firstColon)
+                        lineCode = lineCode.Mid(firstColon + 2);
+                    lineCode = lineCode.Replace(_T("\n"), _T("`n")).Replace(_T("\r"), _T("`r")).Replace(_T("\t"), _T("`t"));
+                    int trimAt = 70;
+                    if (lineCode.GetLength() > trimAt)
+                        lineCode = lineCode.Left(trimAt - 5) + _T("...");
+                    lineCode.Append('\n');
+                    stack.AppendFormat(formatString, Line::sSourceFile[exLine->mFileIndex],
+                                       exLine->mLineNumber, what.GetString(), lineCode.GetString());
+                }
+            }
+            se--;
+        }
+    }
+
+    int pp = 7;
+    aParams[++pp].symbol = SYM_STRING;  aParams[pp].marker = _T("Stack");
+    aParams[++pp].symbol = SYM_STRING;  aParams[pp].marker = (LPTSTR) stack.GetString();
+
 	if (aExtraInfo && *aExtraInfo)
 	{
 		aParamCount += 2;
-		aParams[8].symbol = SYM_STRING; aParams[8].marker = _T("Extra");
-		aParams[9].symbol = SYM_STRING; aParams[9].marker = (LPTSTR)aExtraInfo;
+        aParams[++pp].symbol = SYM_STRING; aParams[pp].marker = _T("Extra");
+        aParams[++pp].symbol = SYM_STRING; aParams[pp].marker = (LPTSTR)aExtraInfo;
+    }
+
+    CString lastErrorMsg;
+    if (g->LastError)
+    {
+        aParamCount += 2;
+        TCHAR MessageText[250];
+        FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, g->LastError, 0, MessageText, _countof(MessageText) - 1, NULL);
+        lastErrorMsg.Format(_T("%d = %s"), g->LastError, MessageText);
+        lastErrorMsg.Replace(_T("\r"), _T("")); // CRs mess up AHK displays.  Only want LFs
+        lastErrorMsg.TrimRight(_T("\n"));       // Don't need the trailing LF
+        aParams[++pp].symbol = SYM_STRING; aParams[pp].marker = _T("LastError");
+        aParams[++pp].symbol = SYM_STRING; aParams[pp].marker = (LPTSTR) lastErrorMsg.GetString();
 	}
 
 	return Object::Create(aParam, aParamCount);
