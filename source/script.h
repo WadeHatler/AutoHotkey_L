@@ -874,7 +874,7 @@ public:
 	// to 64KB to be compatible with the Win9x limit.  Avg. line length is probably under 100 for
 	// the vast majority of scripts, so 400 seems unlikely to exceed the buffer size.  Even in the
 	// worst case where the buffer size is exceeded, the text is simply truncated, so it's not too bad:
-	#define LINE_LOG_SIZE 4000  // See above. 
+	#define LINE_LOG_SIZE 4000  // See above.		// WDH: https://github.com/WadeHatler/AutoHotkey_L
 	static Line *sLog[LINE_LOG_SIZE];
 	static DWORD sLogTick[LINE_LOG_SIZE];
 	static int sLogNext;
@@ -2885,7 +2885,7 @@ VarSizeType BIV_IsAdmin(LPTSTR aBuf, LPTSTR aVarName);
 VarSizeType BIV_PtrSize(LPTSTR aBuf, LPTSTR aVarName);
 VarSizeType BIV_PriorKey(LPTSTR aBuf, LPTSTR aVarName);
 VarSizeType BIV_ScreenDPI(LPTSTR aBuf, LPTSTR aVarName);
-VarSizeType BIV_ListLines(LPTSTR aBuf, LPTSTR aVarName);
+VarSizeType BIV_ListLines(LPTSTR aBuf, LPTSTR aVarName);	// WDH: https://github.com/WadeHatler/AutoHotkey_L
 
 ////////////////////////
 // BUILT-IN FUNCTIONS //

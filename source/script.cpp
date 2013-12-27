@@ -9091,7 +9091,7 @@ void *Script::GetVarType(LPTSTR aVarName)
 	if (!_tcscmp(lower, _T("ahkpath"))) return BIV_AhkPath;
 	if (!_tcscmp(lower, _T("priorkey"))) return BIV_PriorKey;
 	if (!_tcscmp(lower, _T("screendpi"))) return BIV_ScreenDPI;
-    if (!_tcscmp(lower, _T("listlines"))) return BIV_ListLines;
+    if (!_tcscmp(lower, _T("listlines"))) return BIV_ListLines;  // WDH: https://github.com/WadeHatler/AutoHotkey_L
 
 	// Since above didn't return:
 	return (void *)VAR_NORMAL;
@@ -13595,6 +13595,8 @@ __forceinline ResultType Line::Perform() // As of 2/9/2009, __forceinline() redu
 	WinGroup *group; // For the group commands.
 	Var *arg_var2, *output_var = OUTPUT_VAR; // Okay if NULL. Users of it should only consider it valid if their first arg is actually an output_variable.
 	global_struct &g = *::g; // Reduces code size due to replacing so many g-> with g. Eclipsing ::g with local g makes compiler remind/enforce the use of the right one.
+	g.LastErrorWasSet = FALSE;
+
 	BOOL arg2_has_binary_integer;
 	ToggleValueType toggle;  // For commands that use on/off/neutral.
 	// Use signed values for these in case they're really given an explicit negative value:
@@ -14592,16 +14594,16 @@ __forceinline ResultType Line::Perform() // As of 2/9/2009, __forceinline() redu
 #endif
 		// Otherwise:
 		return ShowMainWindow(MAIN_MODE_KEYHISTORY, false); // Pass "unrestricted" when the command is explicitly used in the script.
-	case ACT_LISTLINES:
+
+	case ACT_LISTLINES:										// WDH: https://github.com/WadeHatler/AutoHotkey_L
         if (!*sArgDeref[0])                                 // Blank parameter - show the window
-			return ShowMainWindow(MAIN_MODE_LINES, false); // Pass "unrestricted" when the command is explicitly used in the script.
+			return ShowMainWindow(MAIN_MODE_LINES, false);	// Pass "unrestricted" when the command is explicitly used in the script.
 
         else if (RegExMatch(ARG1, _T("i)^(on|off)$")) != NULL)
             toggle = ConvertOnOff(ARG1, NEUTRAL);
 
         else if (IsPureNumeric(ARG1, false, false, false, false))
             toggle = LegacyResultToBOOL(ARG1) ? TOGGLED_ON : TOGGLED_OFF;
-            //toggle = (atoi(ARG1) != 0 ? TOGGLED_ON : TOGGLED_OFF);
 
         else if (!_strcmpi(ARG1, "CLEAR"))
         {
@@ -15200,12 +15202,12 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
 {
 	LPTSTR aBuf_orig = aBuf;
 
-    FILE *fp = NULL;
+    FILE *fp = NULL;						// WDH: https://github.com/WadeHatler/AutoHotkey_L
     BOOL pendingFilename = true;
     BOOL firstLine = true;
     // TODO Unicode support
     if (RegExMatch(aBuf, _T("FILE::")) != NULL)
-    { //~~~
+    { 
         LPTSTR listFile = &aBuf[6];
         DeleteFile(listFile);
         if (!(fp = _tfopen(listFile, _T("wb"))))
@@ -15284,7 +15286,7 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
                     pendingFilename = true;
 			}
 #endif
-            if (fp)
+            if (fp)						// WDH: https://github.com/WadeHatler/AutoHotkey_L
             {
                 aBuf = aBuf_orig;
                 LPTSTR nullByte = sLog[line_index]->ToText(aBuf, aBufSize, true, elapsed, this_item_is_special);
@@ -15295,8 +15297,8 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
                 TCHAR lastChar  = *(nullByte - 3);
                 int length      = nullByte - colon - 2;
 
-                if (_tcsrchr(_T("{}"), lastChar) && length <= 3)   // Ignore junk lines.  For example function declarations come out as {
-                    continue;
+                //if (_tcsrchr(_T("{}"), lastChar) && length <= 3)   // Ignore junk lines.  For example function declarations come out as {
+                //    continue;
 
                 // Some file listings won't have any lines that survive the purge of jlines, so wait until we have a real line
                 // before printing the filename.  Also add a blank line befor all filenames for readability (except the first)
@@ -15334,7 +15336,7 @@ LPTSTR Line::LogToText(LPTSTR aBuf, int aBufSize) // aBufSize should be an int t
 
 	} // outer for() that retries the log-to-buffer routine.
 
-    if (fp)
+    if (fp)																		// WDH: https://github.com/WadeHatler/AutoHotkey_L
     {
         fclose(fp);
         return NULL;
@@ -15590,6 +15592,7 @@ Line *Line::PreparseError(LPTSTR aErrorText, LPTSTR aExtraInfo)
 IObject *Line::CreateRuntimeException(LPCTSTR aErrorText, LPCTSTR aWhat, LPCTSTR aExtraInfo)
 {
 	// Build the parameters for Object::Create()
+	// WDH: https://github.com/WadeHatler/AutoHotkey_L
     ExprTokenType aParams[7*2]; int aParamCount = (7-2)*2; // 7 Max - 2 Optional
     ExprTokenType* aParam[7*2] = { aParams + 0, aParams + 1, aParams + 2, aParams + 3, aParams + 4
         , aParams + 5, aParams + 6, aParams + 7, aParams + 8, aParams + 9, aParams + 10, aParams + 11
@@ -15644,7 +15647,7 @@ IObject *Line::CreateRuntimeException(LPCTSTR aErrorText, LPCTSTR aWhat, LPCTSTR
                 {
                     TCHAR lineNum[20];
                     maxFilename = max(maxFilename, _tcslen(Line::sSourceFile[exLine->mFileIndex]));
-                    maxLineNum  = max(maxLineNum , _tcslen(ITOA(exLine->mLineNumber, lineNum)));
+                    maxLineNum  = max(maxLineNum , _tcslen(ITOA(exLine->mLineNumber, lineNum)));	// WDH: https://github.com/WadeHatler/AutoHotkey_L
                     maxWhat     = max(maxWhat    , (DWORD)what.GetLength());
                 }
                 else
@@ -15680,6 +15683,7 @@ IObject *Line::CreateRuntimeException(LPCTSTR aErrorText, LPCTSTR aWhat, LPCTSTR
         aParams[++pp].symbol = SYM_STRING; aParams[pp].marker = (LPTSTR)aExtraInfo;
     }
 
+	// WDH: Add a field for A_LastError and it's text equivalent if appropriate.
     CString lastErrorMsg;
     if (g->LastError)
     {
@@ -15809,6 +15813,7 @@ ResultType Line::SetErrorsOrThrow(bool aError, DWORD aLastErrorOverride)
 {
 	// LastError is set even if we're going to throw an exception, for simplicity:
 	g->LastError = aLastErrorOverride == -1 ? GetLastError() : aLastErrorOverride;
+	g->LastErrorWasSet = TRUE;
 	return SetErrorLevelOrThrowBool(aError);
 }
 

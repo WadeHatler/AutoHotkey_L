@@ -11338,6 +11338,7 @@ VarSizeType BIV_ScreenDPI(LPTSTR aBuf, LPTSTR aVarName)
 	return aBuf ? (VarSizeType)_tcslen(aBuf) : MAX_INTEGER_SIZE;
 }
 
+// WDH: https://github.com/WadeHatler/AutoHotkey_L
 VarSizeType BIV_ListLines(LPTSTR aBuf, LPTSTR aVarName)
 {
     if (aBuf)
@@ -14513,8 +14514,8 @@ break_both:
 		{
 			// Since both the error code and the offset are desirable outputs, it seems best to also
 			// include descriptive error text (debatable).
-			sntprintf(error_buf, _countof(error_buf), _T("Compile error %d at offset %d: %hs"), error_code
-				, error_offset, error_msg);
+			sntprintf(error_buf, _countof(error_buf), _T("Compile error %d at offset %d: %hs - Pattern: %s"), error_code
+				, error_offset, error_msg, aRegEx);
 			g_script.SetErrorLevelOrThrowStr(error_buf, aResultToken->marker);
 		}
 		goto error;
